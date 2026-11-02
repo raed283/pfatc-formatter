@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PFATC Post Formatter</title>
+<meta name="description" content="Free tool to format PFATC ATIS and controller posts for Discord. Runs entirely in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%AB%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#667085;--line:#d9dde3;--accent:#2f6fed;--accent-text:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--text:#e8eaee;--muted:#9aa3b0;--line:#323844;--accent:#5b8dff;--accent-text:#0b1020}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 14px 60px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 16px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--muted);margin:8px 0 3px}
+input[type=text],select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--text);font:inherit}
+textarea{min-height:90px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;background:var(--bg);user-select:none}
+.chip input{margin:0}
+.chip.on{border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+@media (max-width:520px){.grid{grid-template-columns:1fr}}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace}
+.bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+button{background:var(--accent);color:var(--accent-text);border:0;border-radius:7px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:400;padding:4px 10px;font-size:12px}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+footer{margin-top:24px;text-align:center;font-size:12px;color:var(--muted)}
+footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1>PFATC Post Formatter</h1>
+  <p class="sub">Pick FIR and airports, fill in controllers + ATIS, copy the post. Discord IDs: just the number (pasting &lt;@123&gt; works too). Leave blank if unstaffed.</p>
+  <p class="sub">&#128274; Runs entirely in your browser. Nothing you type is sent or stored anywhere.</p>
+
+  <div class="card">
+    <label for="fir" style="margin-top:0">FIR</label>
+    <select id="fir"></select>
+    <label>Airports to add</label>
+    <div class="chips" id="chips"></div>
+    <label for="center" id="centerLabel">Center</label>
+    <input type="text" id="center" inputmode="numeric" placeholder="Discord ID">
+  </div>
+
+  <div id="airports"></div>
+
+  <div class="card">
+    <div class="bar">
+      <h2 style="margin:0">Formatted post</h2>
+      <div><button class="ghost" id="clear" type="button">Clear all</button> <button id="copy" type="button">Copy</button></div>
+    </div>
+    <pre id="out"></pre>
+  </div>
+  <footer>
+    v1.0.0 &middot; Updated 2026-11-02 &middot; Not an official PFATC tool<br>
+    <a href="https://github.com/YOUR-USERNAME/pfatc-formatter" target="_blank" rel="noopener">Source &amp; bug reports on GitHub</a> &middot; MIT License
+  </footer>
+</main>
+
+<script>
+// positions: [label, identifier, name, frequency]
+const FIRS = {
+  "Lisboa FIR": {
+    center: ["LPPC_CTR", "Lisboa Center", "132.555"],
+    airports: {
+      LPMA: {name: "Madeira Airport", positions: [
+        ["Tower", "LPMA_TWR", "Madeira Tower", "124.660"]]}
+    }
+  },
+  "Anchorage FIR": {
+    center: ["ANC_CTR", "Anchorage Center", "132.300"],
+    airports: {
+      PAFA: {name: "Fairbanks Airport", positions: [
+        ["Approach", "FAI_APP", "Fairbanks Approach", "125.350"],
+        ["Tower", "FAI_TWR", "Fairbanks Tower", "118.300"],
+        ["Ground", "FAI_GND", "Fairbanks Ground", "121.900"],
+        ["Delivery", "FAI_DEL", "Fairbanks Delivery", "127.600"]]}
+    }
+  },
+  "Santo Domingo FIR": {
+    center: ["MDCS_CTR", "Santo Domingo Center", "124.800"],
+    airports: {
+      MDPC: {name: "Punta Cana Airport", positions: [
+        ["Approach", "MDPC_APP", "Punta Cana Approach", "119.750"],
+        ["Tower", "MDPC_TWR", "Punta Cana Tower", "118.800"],
+        ["Ground", "MDPC_GND", "Punta Cana Ground", "121.900"],
+        ["Ramp", "MDPC_RMP", "Punta Cana Ramp", "131.750"],
+        ["Delivery", "MDPC_DEL", "Punta Cana Delivery", "121.650"]]},
+      MDST: {name: "Cibao Airport", positions: [
+        ["Approach", "MDST_APP", "Cibao Approach", "119.000"],
+        ["Tower", "MDST_TWR", "Cibao Tower", "118.300"],
+        ["Ground", "MDST_GND", "Cibao Ground", "121.900"]]},
+      MDAB: {name: "Arroyo Barril Airport", positions: [
+        ["Tower", "MDAB_TWR", "Arroyo Barril Tower", "118.450"]]},
+      MTCA: {name: "Antoine Simon", positions: [
+        ["Radio", "MTCA_RDO", "Antoine Simon Radio", "118.900"]]}
+    }
+  },
+  "Nicosia FIR": {
+    center: ["LCCC_CTR", "Nicosia Center", "128.605"],
+    airports: {
+      LCLK: {name: "Larnaca Airport", positions: [
+        ["Approach", "LCLK_APP", "Larnaca Approach", "130.205"],
+        ["Tower", "LCLK_TWR", "Larnaca Tower", "121.205"],
+        ["Ground", "LCLK_GND", "Larnaca Ground", "121.905"],
+        ["Delivery", "LCLK_DEL", "Larnaca Delivery", "120.580"]]},
+      LCPH: {name: "Paphos Airport", positions: [
+        ["Approach", "LCPH_APP", "Paphos Approach", "119.905"],
+        ["Ground", "LCPH_GND", "Paphos Ground", "120.805"]]},
+      LCRA: {name: "RAF Akrotiri Airport", positions: [
+        ["Approach", "LCRA_APP", "RAF Akrotiri Approach", "123.600"],
+        ["Tower", "LCRA_TWR", "RAF Akrotiri Tower", "130.075"],
+        ["Ground", "LCRA_GND", "RAF Akrotiri Ground", "122.100"]]}
+    }
+  },
+  "London FIR": {
+    center: ["EGTT_CTR", "London Center", "127.430"],
+    airports: {
+      EGKK: {name: "Gatwick Airport", positions: [
+        ["Director", "EGKK_APP", "Gatwick Director", "126.825"],
+        ["Tower", "EGKK_TWR", "Gatwick Tower", "124.230"],
+        ["Ground", "EGKK_S_GND", "Gatwick Ground", "121.805"],
+        ["Delivery", "EGKK_DEL", "Gatwick Delivery", "121.955"]]},
+      EGLC: {name: "London City", positions: [
+        ["Approach", "EGLC_APP", "London City Approach", "132.700"],
+        ["Tower", "EGLC_TWR", "London City Tower", "118.080"],
+        ["Ground", "EGLC_GND", "London City Ground", "121.830"]]},
+      EGFF: {name: "Cardiff Airport", positions: [
+        ["Approach", "EGFF_APP", "Cardiff Approach", "119.155"],
+        ["Tower", "EGFF_TWR", "Cardiff Tower", "133.105"]]},
+      EGHC: {name: "Land's End Airport", positions: [
+        ["Tower", "EGHC_TWR", "Land's End Tower", "120.255"]]},
+      EGHJ: {name: "Bembridge Airport", positions: [
+        ["Radio", "EGHJ_RDO", "Bembridge Radio", "123.255"]]},
+      EGCK: {name: "Caernarfon Airport", positions: [
+        ["Radio", "EGCK_RDO", "Caernarfon Radio", "122.255"]]},
+      X2BH: {name: "Bolt Head Airfield", positions: [
+        ["Radio", "X2BH", "Bolt Head Airfield", "135.480"]]}
+    }
+  }
+};
+
+const $ = id => document.getElementById(id);
+const firSel = $("fir"), chips = $("chips"), airportsDiv = $("airports"), out = $("out");
+const digits = v => v.replace(/\D/g, "");
+let text = "";
+
+Object.keys(FIRS).forEach(n => firSel.add(new Option(n, n)));
+
+function buildFir() {
+  const fir = FIRS[firSel.value];
+  $("centerLabel").textContent = fir.center[0] + " (" + fir.center[1] + ")";
+  $("center").value = "";
+  chips.innerHTML = "";
+  airportsDiv.innerHTML = "";
+  Object.entries(fir.airports).forEach(([code, ap]) => {
+    // chip
+    const chip = document.createElement("label");
+    chip.className = "chip";
+    chip.style.margin = "0";
+    chip.style.color = "var(--text)";
+    chip.innerHTML = '<input type="checkbox" data-code="' + code + '"><span>' + code + '</span>';
+    chip.title = ap.name;
+    chips.appendChild(chip);
+    // section
+    const sec = document.createElement("div");
+    sec.className = "card";
+    sec.id = "sec-" + code;
+    sec.hidden = true;
+    let h = "<h2>" + code + " &mdash; " + ap.name + "</h2><div class=\"grid\">";
+    ap.positions.forEach(p => {
+      h += '<div><label>' + p[1] + ' (' + p[0] + ')</label><input type="text" inputmode="numeric" data-pos="' + p[0] + '" placeholder="Discord ID"></div>';
+    });
+    h += '</div><label>ATIS</label><textarea data-atis placeholder="Paste ATIS text"></textarea>' +
+         '<label>Flight-plans URL</label><input type="text" data-url placeholder="https://...">';
+    sec.innerHTML = h;
+    airportsDiv.appendChild(sec);
+  });
+  render();
+}
+
+function line(id, name, freq, did) {
+  return id + ' "' + name + '" (' + freq + '): <@' + did + '>';
+}
+
+function render() {
+  const fir = FIRS[firSel.value];
+  const parts = [firSel.value];
+  const c = digits($("center").value);
+  if (c) parts.push(line(fir.center[0], fir.center[1], fir.center[2], c));
+
+  Object.entries(fir.airports).forEach(([code, ap]) => {
+    const on = chips.querySelector('[data-code="' + code + '"]').checked;
+    const sec = $("sec-" + code);
+    sec.hidden = !on;
+    chips.querySelector('[data-code="' + code + '"]').parentElement.classList.toggle("on", on);
+    if (!on) return;
+    parts.push(ap.name);
+    const lines = [];
+    ap.positions.forEach(p => {
+      const d = digits(sec.querySelector('[data-pos="' + p[0] + '"]').value);
+      if (d) lines.push(line(p[1], p[2], p[3], d));
+    });
+    if (lines.length) parts.push(lines.join("\n"));
+    const atis = sec.querySelector("[data-atis]").value.trim();
+    if (atis) parts.push(atis);
+    const url = sec.querySelector("[data-url]").value.trim();
+    if (url) parts.push(url);
+  });
+
+  text = parts.join("\n\n");
+  out.textContent = text;
+}
+
+firSel.addEventListener("change", buildFir);
+document.addEventListener("input", render);
+document.addEventListener("change", render);
+
+$("clear").addEventListener("click", () => buildFir());
+
+$("copy").addEventListener("click", async () => {
+  const btn = $("copy");
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  btn.textContent = "Copied!";
+  setTimeout(() => btn.textContent = "Copy", 1200);
+});
+
+buildFir();
+</script>
+</body>
+</html>
