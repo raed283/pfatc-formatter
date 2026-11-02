@@ -37,16 +37,27 @@ footer a{color:var(--muted)}
 <body>
 <main>
   <h1>PFATC Post Formatter</h1>
-  <p class="sub">Pick FIR and airports, fill in controllers + ATIS, copy the post. Discord IDs: just the number (pasting &lt;@123&gt; works too). Leave blank if unstaffed.</p>
+  <p class="sub">Pick your role, fill in controllers + ATIS, copy the post. Discord IDs: just the number (pasting &lt;@123&gt; works too). Leave blank if unstaffed.</p>
   <p class="sub">&#128274; Runs entirely in your browser. Nothing you type is sent or stored anywhere.</p>
 
   <div class="card">
-    <label for="fir" style="margin-top:0">FIR</label>
-    <select id="fir"></select>
-    <label>Airports to add</label>
-    <div class="chips" id="chips"></div>
-    <label for="center" id="centerLabel">Center</label>
-    <input type="text" id="center" inputmode="numeric" placeholder="Discord ID">
+    <label style="margin-top:0">I'm controlling</label>
+    <div class="chips" id="roles">
+      <label class="chip on" style="margin:0;color:var(--text)"><input type="radio" name="role" value="center" checked><span>Center</span></label>
+      <label class="chip" style="margin:0;color:var(--text)"><input type="radio" name="role" value="airport"><span>An airport (tower, ground, etc.)</span></label>
+    </div>
+    <div id="firBlock">
+      <label for="fir">FIR</label>
+      <select id="fir"></select>
+      <label>Airports to add</label>
+      <div class="chips" id="chips"></div>
+      <label for="center" id="centerLabel">Center</label>
+      <input type="text" id="center" inputmode="numeric" placeholder="Discord ID">
+    </div>
+    <div id="apBlock" hidden>
+      <label for="apSel">Airport</label>
+      <select id="apSel"></select>
+    </div>
   </div>
 
   <div id="airports"></div>
@@ -59,7 +70,7 @@ footer a{color:var(--muted)}
     <pre id="out"></pre>
   </div>
   <footer>
-    v1.0.0 &middot; Updated 2026-11-02 &middot; Not an official PFATC tool<br>
+    v1.1.0 &middot; Updated 2026-11-02 &middot; Not an official PFATC tool<br>
     <a href="https://github.com/raed283/pfatc-formatter" target="_blank" rel="noopener">Source &amp; bug reports on GitHub</a> &middot; &copy; 2026 raed283 &middot; MIT License
   </footer>
 </main>
@@ -148,20 +159,43 @@ const FIRS = {
 };
 
 const $ = id => document.getElementById(id);
-const firSel = $("fir"), chips = $("chips"), airportsDiv = $("airports"), out = $("out");
+const firSel = $("fir"), apSel = $("apSel"), chips = $("chips"), airportsDiv = $("airports"), out = $("out");
 const digits = v => v.replace(/\D/g, "");
 let text = "";
 
-Object.keys(FIRS).forEach(n => firSel.add(new Option(n, n)));
+// code -> {ap, fir}
+const ALL = {};
+Object.entries(FIRS).forEach(([f, fir]) => Object.entries(fir.airports).forEach(([c, ap]) => { ALL[c] = {ap, fir: f}; }));
 
-function buildFir() {
+Object.keys(FIRS).forEach(n => firSel.add(new Option(n, n)));
+Object.entries(FIRS).forEach(([f, fir]) => {
+  const g = document.createElement("optgroup");
+  g.label = f;
+  Object.entries(fir.airports).forEach(([c, ap]) => g.appendChild(new Option(c + " - " + ap.name, c)));
+  apSel.appendChild(g);
+});
+
+// one input section per airport, built once, shown/hidden as needed
+Object.entries(ALL).forEach(([code, {ap}]) => {
+  const sec = document.createElement("div");
+  sec.className = "card";
+  sec.id = "sec-" + code;
+  sec.hidden = true;
+  let h = "<h2>" + code + " &mdash; " + ap.name + "</h2><div class=\"grid\">";
+  ap.positions.forEach(p => {
+    h += '<div><label>' + p[1] + ' (' + p[0] + ')</label><input type="text" inputmode="numeric" data-pos="' + p[0] + '" placeholder="Discord ID"></div>';
+  });
+  h += '</div><label>ATIS</label><textarea data-atis placeholder="Paste ATIS text"></textarea>' +
+       '<label>Flight-plans URL</label><input type="text" data-url placeholder="https://...">';
+  sec.innerHTML = h;
+  airportsDiv.appendChild(sec);
+});
+
+function buildChips() {
   const fir = FIRS[firSel.value];
   $("centerLabel").textContent = fir.center[0] + " (" + fir.center[1] + ")";
-  $("center").value = "";
   chips.innerHTML = "";
-  airportsDiv.innerHTML = "";
   Object.entries(fir.airports).forEach(([code, ap]) => {
-    // chip
     const chip = document.createElement("label");
     chip.className = "chip";
     chip.style.margin = "0";
@@ -169,61 +203,68 @@ function buildFir() {
     chip.innerHTML = '<input type="checkbox" data-code="' + code + '"><span>' + code + '</span>';
     chip.title = ap.name;
     chips.appendChild(chip);
-    // section
-    const sec = document.createElement("div");
-    sec.className = "card";
-    sec.id = "sec-" + code;
-    sec.hidden = true;
-    let h = "<h2>" + code + " &mdash; " + ap.name + "</h2><div class=\"grid\">";
-    ap.positions.forEach(p => {
-      h += '<div><label>' + p[1] + ' (' + p[0] + ')</label><input type="text" inputmode="numeric" data-pos="' + p[0] + '" placeholder="Discord ID"></div>';
-    });
-    h += '</div><label>ATIS</label><textarea data-atis placeholder="Paste ATIS text"></textarea>' +
-         '<label>Flight-plans URL</label><input type="text" data-url placeholder="https://...">';
-    sec.innerHTML = h;
-    airportsDiv.appendChild(sec);
   });
-  render();
 }
 
 function line(id, name, freq, did) {
   return id + ' "' + name + '" (' + freq + '): <@' + did + '>';
 }
 
-function render() {
-  const fir = FIRS[firSel.value];
-  const parts = [firSel.value];
-  const c = digits($("center").value);
-  if (c) parts.push(line(fir.center[0], fir.center[1], fir.center[2], c));
-
-  Object.entries(fir.airports).forEach(([code, ap]) => {
-    const on = chips.querySelector('[data-code="' + code + '"]').checked;
-    const sec = $("sec-" + code);
-    sec.hidden = !on;
-    chips.querySelector('[data-code="' + code + '"]').parentElement.classList.toggle("on", on);
-    if (!on) return;
-    parts.push(ap.name);
-    const lines = [];
-    ap.positions.forEach(p => {
-      const d = digits(sec.querySelector('[data-pos="' + p[0] + '"]').value);
-      if (d) lines.push(line(p[1], p[2], p[3], d));
-    });
-    if (lines.length) parts.push(lines.join("\n"));
-    const atis = sec.querySelector("[data-atis]").value.trim();
-    if (atis) parts.push(atis);
-    const url = sec.querySelector("[data-url]").value.trim();
-    if (url) parts.push(url);
+function airportParts(code, parts) {
+  const ap = ALL[code].ap;
+  const sec = $("sec-" + code);
+  parts.push(ap.name);
+  const lines = [];
+  ap.positions.forEach(p => {
+    const d = digits(sec.querySelector('[data-pos="' + p[0] + '"]').value);
+    if (d) lines.push(line(p[1], p[2], p[3], d));
   });
+  if (lines.length) parts.push(lines.join("\n"));
+  const atis = sec.querySelector("[data-atis]").value.trim();
+  if (atis) parts.push(atis);
+  const url = sec.querySelector("[data-url]").value.trim();
+  if (url) parts.push(url);
+}
+
+function render() {
+  const mode = document.querySelector('input[name="role"]:checked').value;
+  document.querySelectorAll('#roles .chip').forEach(c => c.classList.toggle("on", c.querySelector("input").checked));
+  $("firBlock").hidden = mode !== "center";
+  $("apBlock").hidden = mode !== "airport";
+  Object.keys(ALL).forEach(c => { $("sec-" + c).hidden = true; });
+
+  const parts = [];
+  if (mode === "center") {
+    const fir = FIRS[firSel.value];
+    parts.push(firSel.value);
+    const c = digits($("center").value);
+    if (c) parts.push(line(fir.center[0], fir.center[1], fir.center[2], c));
+    Object.keys(fir.airports).forEach(code => {
+      const box = chips.querySelector('[data-code="' + code + '"]');
+      box.parentElement.classList.toggle("on", box.checked);
+      if (!box.checked) return;
+      $("sec-" + code).hidden = false;
+      airportParts(code, parts);
+    });
+  } else {
+    const code = apSel.value;
+    $("sec-" + code).hidden = false;
+    airportParts(code, parts);
+  }
 
   text = parts.join("\n\n");
   out.textContent = text;
 }
 
-firSel.addEventListener("change", buildFir);
+firSel.addEventListener("change", () => { $("center").value = ""; buildChips(); });
 document.addEventListener("input", render);
 document.addEventListener("change", render);
 
-$("clear").addEventListener("click", () => buildFir());
+$("clear").addEventListener("click", () => {
+  document.querySelectorAll("main input[type=text], main textarea").forEach(e => { e.value = ""; });
+  chips.querySelectorAll("input").forEach(e => { e.checked = false; });
+  render();
+});
 
 $("copy").addEventListener("click", async () => {
   const btn = $("copy");
@@ -241,7 +282,8 @@ $("copy").addEventListener("click", async () => {
   setTimeout(() => btn.textContent = "Copy", 1200);
 });
 
-buildFir();
+buildChips();
+render();
 </script>
 </body>
 </html>
