@@ -10,7 +10,7 @@ Everything runs in your browser. No servers, no tracking, no external scripts or
 
 ## Use it
 
-Live site: https://YOUR-USERNAME.github.io/pfatc-formatter/
+Live site: https://raed283.github.io/pfatc-formatter/
 
 Or download `index.html` and open it locally. No install needed.
 
