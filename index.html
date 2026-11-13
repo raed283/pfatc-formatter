@@ -159,6 +159,10 @@ const FIRS = {
   }
 };
 
+// header titles per new network format
+const FIR_ICAO = {"Lisboa FIR":"LPPC","Anchorage FIR":"PAZA","Santo Domingo FIR":"MDCS","Nicosia FIR":"LCCC","London FIR":"EGTT"};
+const TITLES = {LPMA:"MADEIRA LPMA",PAFA:"FAIRBANKS PAFA",MDPC:"PUNTA CANA MDPC",MDST:"CIBAO MDST",MDAB:"ARROYO BARRIL MDAB",MTCA:"ANTOINE SIMON MTCA",MDCR:"CABO ROJO MDCR",LCLK:"LARNACA LCLK",LCPH:"PAPHOS LCPH",LCRA:"RAF AKROTIRI LCRA",EGKK:"LONDON GATWICK EGKK",EGLC:"LONDON CITY EGLC",EGFF:"CARDIFF EGFF",EGHC:"LAND'S END EGHC",EGHJ:"BEMBRIDGE EGHJ",EGCK:"CAERNARFON EGCK",X2BH:"BOLT HEAD AIRFIELD X2BH"};
+
 const $ = id => document.getElementById(id);
 const firSel = $("fir"), apSel = $("apSel"), chips = $("chips"), airportsDiv = $("airports"), out = $("out");
 const digits = v => v.replace(/\D/g, "");
@@ -214,7 +218,7 @@ function line(id, name, freq, did) {
 function airportParts(code, parts) {
   const ap = ALL[code].ap;
   const sec = $("sec-" + code);
-  parts.push(ap.name);
+  parts.push(TITLES[code]);
   const lines = [];
   ap.positions.forEach(p => {
     const d = digits(sec.querySelector('[data-pos="' + p[0] + '"]').value);
@@ -237,7 +241,7 @@ function render() {
   const parts = [];
   if (mode === "center") {
     const fir = FIRS[firSel.value];
-    parts.push(firSel.value);
+    parts.push(firSel.value.replace(/ FIR$/, "").toUpperCase() + " " + FIR_ICAO[firSel.value] + " FIR");
     const c = digits($("center").value);
     if (c) parts.push(line(fir.center[0], fir.center[1], fir.center[2], c));
     Object.keys(fir.airports).forEach(code => {
